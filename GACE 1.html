@@ -1,0 +1,393 @@
+<!--This was made by the power of Greg Heffley.-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Greg's Awesome Code Editor</title>
+    <link rel="icon" href="https://i.ibb.co/3zcbh56/Untitled-presentation-2.png">
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body {
+            background-color: #f1f1f1;
+            font-family: Arial;
+            display: flex;
+            justify-content: space-between;
+            height: 100vh;
+            margin: 20px;
+        }
+        textarea, input {
+            border: 2px solid transparent;
+            border-bottom: 3px solid transparent;
+            border-radius: 5px;
+            font-family: Arial;
+            outline: none;
+        }
+        button {
+            padding: 5px 10px;
+        }
+        textarea:hover, input:hover {
+            border: 2px solid #138FE8;
+        }
+        textarea:focus, input:focus {
+            border: 2px solid transparent;
+            border-bottom: 3px solid #138FE8;
+        }
+        #clearButton:hover {
+            background-color: red;
+            color: white;
+        }
+        .save:hover, .saveGac:hover {
+            background-color: #138FE8;
+            color: white;
+        }
+        .run:hover {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .run:disabled:hover {
+            background-color: grey;
+            color: white;
+        }
+        .darkMode:hover {
+            background-color: #555;
+            color: white;
+        }
+        .editor-container {
+            width: 50%;
+            overflow: auto;
+        }
+        .iframe-container {
+            position: relative;
+            width: 45%;
+            height: 90vh; 
+        }
+        iframe {
+            width: 100%;
+            height: 95vh;
+            border: 3px solid #138FE8;
+            background-color: white;
+            border-radius: 10px;
+        }
+        .GREGNOTE {
+            font-size: 12px;
+        }
+     
+        .popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            z-index: 1000;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s ease;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 900;
+        }
+        .fullscreen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px; 
+            background-color: rgba(0, 0, 0, 0.25);
+            border: none;
+            color: white;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div class="editor-container">
+    <h2>Greg's awesome code editor!</h2>
+    <p class="GREGNOTE">Note: projects save as GAC files. Click "Save File" to save as your desired format.</p>
+    <textarea id="textInput" rows="10" cols="50" placeholder="Each block of code builds on top of another. Type your first block here."></textarea><br><br>
+    <input type="text" id="fileName" placeholder="File Name"><br><br>
+    <input type="text" id="revision" placeholder="Version (e.g., 1.0)"><br><br>
+    <input type="text" id="fileType" placeholder="File Type" value="html" oninput="checkFileType()"><br><br>
+    <button class="saveGac" onclick="saveGacFile()">Save project</button>
+    <button class="save" onclick="saveFile()">Save File</button>
+    <button class="run" id="runButton" onclick="runCode()" onmouseover="checkIfDisabled()">Run</button>
+    <button class="darkMode" onclick="toggleDarkMode()">Dark Mode</button>
+    <button class="open" onclick="openFile()">Open File</button>
+    <button id="clearButton" onclick="clearTextField()">Clear</button>
+    <button onclick="openFindPopup()">Find</button>
+    <button id="installBtn" style="display: none;">Install App</button> 
+</div>
+
+<div style="position: relative; width: 45%;">
+    <button class="fullscreen-btn" onclick="toggleFullscreen()">Expand</button>
+    <iframe id="preview"></iframe>
+</div>
+
+<div class="overlay" id="overlay" onclick="closeFindPopup()"></div>
+<div class="popup" id="findPopup">
+    <input type="text" id="findInput" placeholder="Find..." onkeypress="handleFind(event)">
+    <button onclick="findText()">Find</button>
+</div>
+
+<script>
+let fileHandle;
+let autoSaveInterval;
+let deferredPrompt; 
+
+async function openFile() {
+    [fileHandle] = await window.showOpenFilePicker({
+        types: [{ description: "Text and GAC Files", accept: { "text/plain": [".txt", ".html", ".css", ".js"], "application/json": [".gac"] } }],
+    });
+    const file = await fileHandle.getFile();
+    const content = await file.text();
+
+    const fileType = file.name.split('.').pop().toLowerCase();
+
+    if (fileType === 'gac') {
+        try {
+
+            const parsedContent = JSON.parse(content);
+
+
+            document.getElementById("textInput").value = parsedContent.content || "";
+            document.getElementById("fileName").value = parsedContent.fileName || "Untitled";
+            document.getElementById("revision").value = parsedContent.fileVersion || "1.0";
+            document.getElementById("fileType").value = parsedContent.fileType || "html";
+
+            checkFileType(); 
+
+     
+            startAutoSave(); 
+        } catch (error) {
+            console.error("Error parsing GAC file:", error);
+            alert("Failed to load GAC file. Please ensure it's formatted correctly.");
+        }
+    } else {
+    
+        document.getElementById("textInput").value = content;
+        document.getElementById("fileName").value = file.name.split('.')[0];
+        document.getElementById("fileType").value = fileType;
+
+    
+        startAutoSave();
+    }
+}
+
+async function saveFile() {
+    const textToSave = document.getElementById("textInput").value;
+
+    if (!fileHandle) {
+        const newFileHandle = await window.showSaveFilePicker({
+            types: [{ description: "Text Files", accept: { "text/plain": [".txt", ".html", ".css", ".js"] } }],
+        });
+        fileHandle = newFileHandle;
+    }
+    
+    const writable = await fileHandle.createWritable();
+    await writable.write(textToSave);
+    await writable.close();
+
+    startAutoSave(); 
+}
+
+function startAutoSave() {
+    if (autoSaveInterval) clearInterval(autoSaveInterval);
+    autoSaveInterval = setInterval(async () => {
+        const textToSave = document.getElementById("textInput").value;
+        const writable = await fileHandle.createWritable();
+        await writable.write(textToSave);
+        await writable.close();
+    }, 3000);
+}
+
+function runCode() {
+    const textToSave = document.getElementById("textInput").value;
+    const previewFrame = document.getElementById('preview');
+    previewFrame.srcdoc = textToSave || "<p style='font-family: Arial; margin-top: 30px;'>You haven't run anything yet.</p>";
+}
+
+let clearButtonClicks = 0;
+let clearButtonTimeout;
+
+function clearTextField() {
+    clearButtonClicks++;
+    if (clearButtonClicks === 1) {
+        alert("You're about to completely wipe everything in your file. Press the 'Clear' button one more time to confirm.");
+        clearButtonTimeout = setTimeout(() => {
+            clearButtonClicks = 0;
+        }, 5000);
+    } else if (clearButtonClicks === 2) {
+        document.getElementById("textInput").value = "";
+        clearButtonClicks = 0;
+        clearTimeout(clearButtonTimeout);
+        clearInterval(autoSaveInterval);
+    }
+}
+
+function toggleDarkMode() {
+    const body = document.body;
+    const inputs = document.querySelectorAll('textarea, input, button, iframe');
+
+    body.style.transition = 'background-color 0.3s, color 0.3s';
+    inputs.forEach(input => {
+        input.style.transition = 'background-color 0.3s, color 0.3s';
+    });
+
+    if (body.style.backgroundColor === '#363636') {
+        body.style.backgroundColor = '#f1f1f1';
+        body.style.color = 'black';
+        inputs.forEach(input => {
+            input.style.backgroundColor = '';
+            input.style.color = '';
+        });
+    } else {
+        body.style.backgroundColor = '#363636';
+        body.style.color = 'white';
+        inputs.forEach(input => {
+            input.style.backgroundColor = '#202020';
+            input.style.color = 'white';
+        });
+    }
+
+    const styleSheet = document.createElement('style');
+    styleSheet.type = 'text/css';
+    styleSheet.innerText = `
+        textarea:hover, input:hover, button:hover {
+            background-color: #555;
+            color: white;
+        }
+        #clearButton:hover {
+            background-color: red;
+            color: white;
+        }
+        .save:hover, .saveGac:hover {
+            background-color: #138FE8;
+            color: white;
+        }
+        .run:hover {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .run:disabled:hover {
+            background-color: grey;
+            color: white;
+        }
+        .darkMode:hover {
+            background-color: #555;
+            color: white;
+        }
+    `;
+    document.head.appendChild(styleSheet);
+}
+
+function checkFileType() {
+    const fileType = document.getElementById("fileType").value;
+    const runButton = document.getElementById("runButton");
+    if (fileType === 'py') {
+        runButton.disabled = true;
+        runButton.onclick = function() {
+            alert("Run is disabled because you're using a language that isn't fully supported.");
+        };
+    } else {
+        runButton.disabled = false;
+        runButton.onclick = runCode;
+    }
+}
+
+function saveGacFile() {
+    const textToSave = document.getElementById("textInput").value;
+    const fileTitle = document.getElementById("fileName").value || "New File";
+    const revision = document.getElementById("revision").value || "1.0";
+    const fileType = document.getElementById("fileType").value || "html";
+    const gacContent = JSON.stringify({ fileName: fileTitle, fileVersion: revision, fileType: fileType, content: textToSave });
+    const blob = new Blob([gacContent], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${fileTitle}(v${revision}).gac`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function openFindPopup() {
+    document.getElementById('overlay').style.display = 'block';
+    document.getElementById('findPopup').style.display = 'block';
+    document.getElementById('findPopup').style.opacity = 1;
+}
+
+function closeFindPopup() {
+    document.getElementById('overlay').style.display = 'none';
+    document.getElementById('findPopup').style.display = 'none';
+}
+
+function findText() {
+    const keyword = document.getElementById('findInput').value;
+    const textArea = document.getElementById("textInput");
+    const content = textArea.value;
+    const index = content.indexOf(keyword);
+
+    if (index !== -1) {
+        textArea.focus();
+        textArea.setSelectionRange(index, index + keyword.length);
+    } else {
+        alert("Keyword not found!");
+    }
+}
+
+function handleFind(event) {
+    if (event.key === 'Enter') {
+        findText();
+    }
+}
+
+function toggleFullscreen() {
+    const iframe = document.getElementById('preview');
+    if (iframe.requestFullscreen) {
+        iframe.requestFullscreen();
+    } else if (iframe.mozRequestFullScreen) { 
+        iframe.mozRequestFullScreen();
+    } else if (iframe.webkitRequestFullscreen) { 
+        iframe.webkitRequestFullscreen();
+    } else if (iframe.msRequestFullscreen) { 
+        iframe.msRequestFullscreen();
+    }
+}
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js')
+            .then(registration => {
+                console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            }).catch(error => {
+                console.error('ServiceWorker registration failed: ', error);
+            });
+    });
+}
+
+
+window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredPrompt = event;
+    document.getElementById('installBtn').style.display = 'block';
+});
+
+document.getElementById('installBtn').addEventListener('click', async () => {
+    document.getElementById('installBtn').style.display = 'none';
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    deferredPrompt = null;
+});
+</script>
+
+</body>
+</html>
