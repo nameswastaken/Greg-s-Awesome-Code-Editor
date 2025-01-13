@@ -6,6 +6,8 @@
   "id": "nameswastaken.github.gace",
   "start_url": "/",
   "description": "Greg's Awesome Code Editor 2",
+  "orientation": "any",
+  "display": "standalone",
   "categories": [
     "productivity"
   ],
