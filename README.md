@@ -1,4 +1,4 @@
-# Greg-s-Awesome-Code-Editor
-A little mini-project that I did because my school wouldn't let me use VS Code.  
+# Greg's Awesome Code Editor 2!!
+Yes a sequel to peak!! Just download source code and run GACE 2.html or index.html :3  
 # Features?
 None. If you can, just use VS code.
